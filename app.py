@@ -15,13 +15,35 @@ from utils import CvFpsCalc
 from model import KeyPointClassifier
 from model import PointHistoryClassifier
 
+# ros imports
+import rospy
+from geometry_msgs.msg import Twist
+# saved state to determine direction of movement
+engaged_memory = None
+
+tw = Twist()
+tw.linear.x=0
+tw.linear.y=0
+tw.linear.z=0
+tw.angular.x=0
+tw.angular.y=0
+tw.angular.z=0
+
+def fill_tw(target_x=0,target_y=0,target_z=0,target_ax=0,target_ay=0,target_az=0):
+    tw.linear.x=target_x
+    tw.linear.y=target_y
+    tw.linear.z=target_z
+    tw.angular.x=target_ax
+    tw.angular.y=target_ay
+    tw.angular.z=target_az
+
 
 def get_args():
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--device", type=int, default=0)
-    parser.add_argument("--width", help='cap width', type=int, default=960)
-    parser.add_argument("--height", help='cap height', type=int, default=540)
+    parser.add_argument("--width", help='cap width', type=int, default=1280)
+    parser.add_argument("--height", help='cap height', type=int, default=720)
 
     parser.add_argument('--use_static_image_mode', action='store_true')
     parser.add_argument("--min_detection_confidence",
@@ -39,6 +61,11 @@ def get_args():
 
 
 def main():
+
+    pub = rospy.Publisher('chatter', Twist, queue_size=10)
+    rospy.init_node('talker', anonymous=True)
+    rate = rospy.Rate(10) # 10hz
+
     # Argument parsing #################################################################
     args = get_args()
 
@@ -99,6 +126,7 @@ def main():
     mode = 0
 
     while True:
+        pub.publish(tw)
         fps = cvFpsCalc.get()
 
         # Process Key (ESC: end) #################################################
@@ -168,6 +196,40 @@ def main():
                     keypoint_classifier_labels[hand_sign_id],
                     point_history_classifier_labels[most_common_fg_id[0][0]],
                 )
+                if (hand_sign_id == 2):
+                    print ("movement engaged")
+                    engaged_memory=landmark_list[8]
+                    print (engaged_memory)
+                elif hand_sign_id == 0 and engaged_memory != None:
+                    diff_x=((1-(landmark_list[8][0]/engaged_memory[0])))
+                    diff_y=((1-(landmark_list[8][1]/engaged_memory[1])))
+                    print(landmark_list[0][1])
+                    print(abs(engaged_memory[1]))
+                    if (abs(diff_x)<0.2 and abs(diff_y)<0.2):
+                        print("difference is less than 10%")
+                        fill_tw()
+                    else:
+                        if ((abs(diff_x))>=(abs(diff_y))):
+                            if diff_x<=0:
+                                print("move right")
+                                fill_tw(0,0.5)
+
+                            else:
+                                print("move left")
+                                fill_tw(0,-0.5)
+                        else:
+                            if diff_y<=0:
+                                print("move down")
+                                fill_tw(-0.5)
+                            else:
+                                print("move up")
+                                fill_tw(0.5)
+                elif (hand_sign_id == 1):
+                    print("fist")
+                    print (landmark_list[0])
+                        
+
+            
         else:
             point_history.append([0, 0])
 
